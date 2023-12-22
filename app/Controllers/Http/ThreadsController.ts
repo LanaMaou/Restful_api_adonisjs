@@ -5,7 +5,7 @@ import ThreadValidator from 'App/Validators/ThreadValidator'
 export default class ThreadsController {
   public async index({ response }: HttpContextContract) {
     try {
-      const threads = await Thread.query().preload('category').preload('user')
+      const threads = await Thread.query().preload('category').preload('user').preload('replies')
       return response.status(200).json({
         data: threads,
       })
@@ -39,6 +39,7 @@ export default class ThreadsController {
         .where('id', params.id)
         .preload('category')
         .preload('user')
+        .preload('replies')
         .firstOrFail()
       return response.status(200).json({
         data: thread,
@@ -50,11 +51,18 @@ export default class ThreadsController {
     }
   }
 
-  public async update({ params, request, response }: HttpContextContract) {
+  public async update({ params, auth, request, response }: HttpContextContract) {
     try {
+      const user = auth.user
       const thread = await Thread.findOrFail(params.id)
-      const validateData = await request.validate(ThreadValidator)
 
+      if (user?.id !== thread.userId) {
+        return response.status(403).json({
+          message: 'You are not authorized to update this thread',
+        })
+      }
+
+      const validateData = await request.validate(ThreadValidator)
       await thread.merge(validateData).save()
       await thread?.load('category')
       await thread?.load('user')
@@ -68,9 +76,17 @@ export default class ThreadsController {
     }
   }
 
-  public async destroy({ params, response }: HttpContextContract) {
+  public async destroy({ params, auth, response }: HttpContextContract) {
     try {
+      const user = auth.user
       const thread = await Thread.findOrFail(params.id)
+
+      if (user?.id !== thread.userId) {
+        return response.status(403).json({
+          message: 'You are not authorized to delete this thread',
+        })
+      }
+
       await thread.delete()
       return response.status(200).json({
         message: 'Thread deleted successfully',
